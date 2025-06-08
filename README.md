@@ -12,7 +12,7 @@ MOF is a file forensic and metadata analysis tool that:
 - Extracts detailed file metadata (creation time, size, MIME, permissions)
 - Retrieves image metadata (format, dimensions, megapixels)
 - Calculates file hashes (MD5, SHA256)
-- Detects and extracts **hidden embedded files**
+- Detects and extracts **hidden embedded files
 - Detects hidden data after PNG `IEND` chunks or known file signatures
 - Displays all results in a beautifully colored table via `rich`
 
