@@ -2,12 +2,16 @@ import os
 import sys
 import time
 import mimetypes
+import subprocess
 import magic
-import hashlib
+import exifread
+import piexif
 from PIL import Image
 from PIL.PngImagePlugin import PngImageFile
 from rich.console import Console
 from rich.table import Table
+from math import log2
+import hashlib  # âœ… NEW: For Hash Generation
 
 console = Console()
 
@@ -25,17 +29,6 @@ FILE_SIGNATURES = {
 def format_time(epoch):
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch))
 
-def calculate_hashes(file_path):
-    hashes = {}
-    try:
-        with open(file_path, 'rb') as f:
-            data = f.read()
-            hashes["MD5"] = hashlib.md5(data).hexdigest()
-            hashes["SHA256"] = hashlib.sha256(data).hexdigest()
-    except Exception as e:
-        hashes["Error"] = str(e)
-    return hashes
-
 def get_basic_metadata(file_path):
     try:
         stat = os.stat(file_path)
@@ -52,6 +45,29 @@ def get_basic_metadata(file_path):
         }
     except Exception as e:
         return {"Error": str(e)}
+
+def get_hashes(file_path):
+    hashes = {"MD5": "", "SHA1": "", "SHA256": ""}
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+            hashes["MD5"] = hashlib.md5(data).hexdigest()
+            hashes["SHA1"] = hashlib.sha1(data).hexdigest()
+            hashes["SHA256"] = hashlib.sha256(data).hexdigest()
+    except Exception as e:
+        hashes = {"Error": str(e)}
+    return hashes
+
+def get_exif_metadata(file_path):
+    meta = {}
+    try:
+        with open(file_path, 'rb') as f:
+            tags = exifread.process_file(f, stop_tag="UNDEF", details=False)
+            for tag in tags.keys():
+                meta[tag] = str(tags[tag])
+    except Exception as e:
+        meta["EXIF Error"] = str(e)
+    return meta
 
 def get_image_metadata(file_path):
     meta = {}
@@ -71,16 +87,38 @@ def get_image_metadata(file_path):
         meta["Image Metadata Error"] = str(e)
     return meta
 
+def get_media_metadata(file_path):
+    meta = {}
+    try:
+        result = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                                 "format=duration,size,bit_rate", "-of",
+                                 "default=noprint_wrappers=1", file_path],
+                                capture_output=True, text=True)
+        for line in result.stdout.strip().split('\n'):
+            key, value = line.strip().split('=')
+            meta[key] = value
+    except Exception as e:
+        meta["ffprobe Error"] = str(e)
+    return meta
+
+def calc_entropy(data):
+    if not data:
+        return 0
+    occur = [0] * 256
+    for b in data:
+        occur[b] += 1
+    entropy = -sum((f/len(data)) * log2(f/len(data)) for f in occur if f)
+    return round(entropy, 4)
+
 def find_embedded_after_iend(file_path):
     try:
         with open(file_path, 'rb') as f:
             content = f.read()
             iend_index = content.find(b'IEND')
             if iend_index != -1 and iend_index + 8 < len(content):
-                embedded_data = content[iend_index + 8:]
-                return embedded_data
+                return content[iend_index + 8:]
     except Exception as e:
-        console.log(f"[red]Error reading file for IEND check: {e}[/red]")
+        console.log(f"[red]IEND check failed: {e}[/red]")
     return None
 
 def scan_for_known_signatures(data):
@@ -93,84 +131,93 @@ def extract_embedded_file(data, original_file_path):
     detected_ext = scan_for_known_signatures(data) or ".bin"
     detected_mime = magic.from_buffer(data, mime=True)
     ext = mimetypes.guess_extension(detected_mime) or detected_ext
-
     save_path = os.path.join(os.path.dirname(original_file_path), f"extracted_hidden_file{ext}")
-
     try:
         with open(save_path, 'wb') as f:
             f.write(data)
         return save_path, detected_mime, ext
     except Exception as e:
-        console.log(f"[red]Failed to save extracted file: {e}[/red]")
+        console.log(f"[red]Failed to extract: {e}[/red]")
         return None, None, None
 
 def analyze_file(file_path):
-    console.rule("[bold green]File Metadata[/bold green]")
+    console.rule("[bold green]ðŸ“ File Metadata")
     meta = get_basic_metadata(file_path)
-    hash_data = calculate_hashes(file_path)
-
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("Property")
     table.add_column("Value", overflow="fold")
     for k, v in meta.items():
         table.add_row(k, str(v))
-    for k, v in hash_data.items():
-        table.add_row(k, str(v))
     console.print(table)
 
+    # ðŸ” File Hashes
+    console.rule("[bold green]ðŸ” Hash Information")
+    hashes = get_hashes(file_path)
+    hash_table = Table(show_header=True, header_style="bold red")
+    hash_table.add_column("Hash Type")
+    hash_table.add_column("Value", overflow="fold")
+    for htype, hval in hashes.items():
+        hash_table.add_row(htype, hval)
+    console.print(hash_table)
+
+    # ðŸ–¼ï¸ Image Metadata
     if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
-        console.rule("[bold green]Image Metadata[/bold green]")
+        console.rule("[bold green]ðŸ–¼ï¸ Image Metadata")
         img_meta = get_image_metadata(file_path)
+        exif_meta = get_exif_metadata(file_path)
         img_table = Table(show_header=True, header_style="bold magenta")
         img_table.add_column("Property")
         img_table.add_column("Value", overflow="fold")
-        for k, v in img_meta.items():
+        for k, v in {**img_meta, **exif_meta}.items():
             img_table.add_row(k, str(v))
         console.print(img_table)
 
-    console.rule("[bold yellow]Hidden File Detection[/bold yellow]")
-    embedded_data = None
+    # ðŸŽ§ Audio/Video Metadata
+    if file_path.lower().endswith(('.mp3', '.mp4', '.mkv', '.wav', '.avi', '.mov')):
+        console.rule("[bold green]ðŸŽ§ Audio/Video Metadata")
+        media_meta = get_media_metadata(file_path)
+        media_table = Table(show_header=True, header_style="bold yellow")
+        media_table.add_column("Property")
+        media_table.add_column("Value", overflow="fold")
+        for k, v in media_meta.items():
+            media_table.add_row(k, str(v))
+        console.print(media_table)
 
-    embedded_data = find_embedded_after_iend(file_path)
-    if embedded_data:
-        console.print("[yellow]Detected data after PNG IEND chunk.[/yellow]")
-        extracted_path, mime, ext = extract_embedded_file(embedded_data, file_path)
-        if extracted_path:
-            console.print(f"[green]Extracted hidden file to:[/green] {extracted_path}")
-            console.print(f"[green]Detected MIME type:[/green] {mime} ({ext})")
-        else:
-            console.print("[red]Failed to extract hidden file.[/red]")
-    else:
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-                search_start = 1024
-                if len(content) > search_start:
-                    for sig, ext in FILE_SIGNATURES.items():
-                        index = content.find(sig, search_start)
-                        if index != -1:
-                            embedded_data = content[index:]
-                            console.print(f"[yellow]Found embedded file signature '{ext}' at offset {index}.[/yellow]")
-                            extracted_path, mime, ext2 = extract_embedded_file(embedded_data, file_path)
-                            if extracted_path:
-                                console.print(f"[green]Extracted embedded file to:[/green] {extracted_path}")
-                                console.print(f"[green]Detected MIME type:[/green] {mime} ({ext2})")
-                            else:
-                                console.print("[red]Failed to extract embedded file.[/red]")
-                            break
-                else:
-                    console.print("File too small to scan for embedded data.")
-        except Exception as e:
-            console.print(f"[red]Error scanning file for embedded signatures: {e}[/red]")
+    # ðŸ” Hidden Files / Entropy
+    console.rule("[bold yellow]ðŸ” Hidden File Detection")
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            entropy = calc_entropy(content)
+            console.print(f"Entropy of file: [cyan]{entropy}[/cyan]")
+            if entropy > 7.5:
+                console.print("[yellow]âš ï¸ High entropy detected. File may contain embedded/obfuscated content.[/yellow]")
 
-    if not embedded_data:
-        console.print("[green]No hidden embedded file detected.[/green]")
+            embedded = find_embedded_after_iend(file_path)
+            if embedded:
+                console.print("[yellow]Found data after IEND chunk.[/yellow]")
+                extracted_path, mime, ext = extract_embedded_file(embedded, file_path)
+                if extracted_path:
+                    console.print(f"[green]Extracted to:[/green] {extracted_path} | [blue]{mime}[/blue] ({ext})")
+                return
+
+            for sig, ext in FILE_SIGNATURES.items():
+                idx = content.find(sig, 1024)
+                if idx != -1:
+                    embedded = content[idx:]
+                    console.print(f"[yellow]Found embedded {ext} at offset {idx}[/yellow]")
+                    extracted_path, mime, ext2 = extract_embedded_file(embedded, file_path)
+                    if extracted_path:
+                        console.print(f"[green]Extracted to:[/green] {extracted_path} | [blue]{mime}[/blue] ({ext2})")
+                    return
+        console.print("[green]No embedded data found.[/green]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        console.print("[bold red]Usage: python script.py <file_path>[/bold red]")
+        console.print("[bold red]Usage:[/bold red] python mof.py <file_path>")
         sys.exit(1)
-
     file_path = sys.argv[1]
     if os.path.isfile(file_path):
         analyze_file(file_path)
