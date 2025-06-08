@@ -7,19 +7,15 @@
 
 ## 🔍 What is MOF?
 
-MOF is a file forensic and metadata analysis tool that:
+🔍 What is MOF?
 
-- Extracts detailed file metadata (creation time, size, MIME, permissions)
-- Retrieves image metadata (format, dimensions, megapixels)
-- Calculates file hashes (MD5, SHA256)
-- Detects and extracts **hidden embedded files
-- Detects hidden data after PNG `IEND` chunks or known file signatures
-- Displays all results in a beautifully colored table via `rich`
+MOF (Meta of File) is a powerful command-line Python tool that performs comprehensive forensic analysis of any file. 
+It extracts metadata, calculates hashes, detects hidden content, and even attempts to extract embedded files.
+Whether it's an image, video, document, or archive — MOF helps you discover the truth inside the file.
+
 
 - ![MOF Output Demo](https://github.com/katifsec/mof/blob/main/73907d70-6a5d-46ba-beef-66f0e0a72760.png)
 
-
----
 
 ## ⚙️ Features
 
