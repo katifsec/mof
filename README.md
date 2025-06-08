@@ -35,7 +35,8 @@ MOF is a file forensic and metadata analysis tool that:
 ```bash
 git clone https://github.com/katifsec/mof.git
 cd mof
-pip install -r requirements.txt
+pip install -r requirements.txt![Screenshot (214)](https://github.com/user-attachments/assets/fbec6528-d07e-4524-8460-cbd6b712487c)
+
 
 ### 
 
