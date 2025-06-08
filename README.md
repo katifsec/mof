@@ -16,6 +16,9 @@ MOF is a file forensic and metadata analysis tool that:
 - Detects hidden data after PNG `IEND` chunks or known file signatures
 - Displays all results in a beautifully colored table via `rich`
 
+- ![MOF Output Demo](Screenshot%20(214).png)
+
+
 ---
 
 ## ⚙️ Features
@@ -35,7 +38,7 @@ MOF is a file forensic and metadata analysis tool that:
 ```bash
 git clone https://github.com/katifsec/mof.git
 cd mof
-pip install -r requirements.txt![Screenshot (214)](https://github.com/user-attachments/assets/fbec6528-d07e-4524-8460-cbd6b712487c)
+pip install -r requirements.txt
 
 
 ### 
